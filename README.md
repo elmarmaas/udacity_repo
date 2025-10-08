@@ -1,4 +1,4 @@
-0;276;0c# udacity_repo
+# udacity_repo
 This repo is used in Udacity Training Machine Learning DevOps Engineer
 
 Git commands in this lesson are
