@@ -34,12 +34,18 @@ def divide_vals(numerator, denominator):
         fraction_val: (float) numerator/denominator
     '''
     try:
+        assert denominator != 0
+        assert isinstance(numerator, (float))
+        assert isinstance(denominator, (float))
         fraction_val = numerator / denominator
         logger.info("SUCCESS: Computed numerator/denominator = %s.",
                     fraction_val)
         return fraction_val
-    except ZeroDivisionError:
-        logger.error("Denominator cannot be zero: %s.", denominator)
+    except AssertionError:
+        logger.error(
+            "ERROR: Either denominator is zero or values not float: %s, %s.",
+            numerator,
+            denominator)
         return "denominator cannot be zero"
 
 
@@ -52,10 +58,11 @@ def num_words(text):
         num_words: (int) number of words in the string
     '''
     try:
+        assert isinstance(text, str)
         words = len(text.split())
         logger.info("SUCCESS: Computed number of words = %s.", words)
         return words
-    except AttributeError:
+    except AssertionError:
         logger.error("Text argument must be a string: %s.", text)
         return "text argument must be a string"
 
