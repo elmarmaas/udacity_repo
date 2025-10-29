@@ -1,0 +1,1 @@
+This file just exists to make sure the folder does not vanish in git in case it does not (yet) contain content.
