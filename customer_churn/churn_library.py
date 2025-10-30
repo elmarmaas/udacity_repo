@@ -102,6 +102,51 @@ def perform_eda(df):
     plt.xlabel('Churn (0=Existing, 1=Churned)')
     plt.ylabel('Rate')
     plt.savefig('./images/churn_histogram.png', bbox_inches='tight', dpi=300)
+
+    plt.figure(figsize=(20,10)) 
+    df['Customer_Age'].hist()
+    plt.title('Customer Age Distribution')
+    plt.xlabel('Age')
+    plt.ylabel('# of customers')
+    plt.savefig('./images/customer_age_histogram.png',
+                bbox_inches='tight', dpi=300)
+    
+    plt.figure(figsize=(20,10)) 
+    marital_counts = df.Marital_Status.value_counts('normalize')
+    sns.barplot(x=marital_counts.index, 
+                y=marital_counts.values,
+                hue=marital_counts.index, 
+                palette='Set1',
+                legend=False) # Disable legend since hue=x makes it redundant
+    plt.title('Marital Status')
+    plt.xlabel('Marital Status')
+    plt.ylabel('Ratio of customers (per status)')
+    plt.savefig('./images/customer_marital_status_historgram.png',
+                bbox_inches='tight', dpi=300)
+
+    plt.figure(figsize=(20,10)) 
+    # distplot is deprecated. Use histplot instead
+    # sns.distplot(df['Total_Trans_Ct']);
+    # Show distributions of 'Total_Trans_Ct' and add a smooth curve 
+    # obtained using a kernel density estimate
+    sns.histplot(df['Total_Trans_Ct'], stat='density', kde=True)
+    plt.title('Transitions')
+    plt.xlabel('Total_Trans_Ct')
+    plt.ylabel('Density')
+    plt.savefig('./images/density_vs_total_trans_ct_historgram.png',
+                bbox_inches='tight', dpi=300)
+    
+    plt.figure(figsize=(20,10))
+    plt.title('Feature Correlation Heatmap')
+    # for heatmap only numeric columns can be used:
+    numeric_df = df.select_dtypes(include=[np.number])
+    # use a sequential color map for the heatmap such that correlation
+    # is more intuitively visible
+    sns.heatmap(numeric_df.corr(), 
+                annot=False, cmap='viridis', linewidths = 2)
+    plt.savefig('./images/feature_correlation_heatmap.png',
+                bbox_inches='tight', dpi=300)
+
     plt.close()  # Close the figure to free memory
     
 
@@ -109,7 +154,7 @@ def perform_eda(df):
 def encoder_helper(df, category_lst, response):
     '''
     helper function to turn each categorical column into a new column with
-    propotion of churn for each category - associated with cell 15 from the 
+    proportion of churn for each category - associated with cell 15 from the 
     notebook
 
     input:
@@ -121,7 +166,14 @@ def encoder_helper(df, category_lst, response):
     output:
             df: pandas dataframe with new columns for
     '''
-    pass
+    # for category in category_lst:
+    #     cat_name = category + '_Churn'
+    #     cat_lst = []
+    #     cat_groups = df.groupby(category).mean()['Churn']
+    #     for val in df[category]:
+    #         cat_lst.append(cat_groups.loc[val])
+    #     df[cat_name] = cat_lst
+
 
 
 def perform_feature_engineering(df, response):
@@ -191,4 +243,10 @@ if __name__ == "__main__":
     # call functions according to sequencediagram.jpg
     df = import_data("./data/bank_data.csv")
     perform_eda(df)
+    gender_lst = []
+    category_lst = ['Gender', 'Education_Level', 'Maritial_Status',
+                    'Income_Category', 'Card_Category']
+    X = pd.DataFrame()
+    encoder_helper(df, category_lst, X)
+    print(df.head())
     
