@@ -151,7 +151,7 @@ def perform_eda(df):
     
 
 
-def encoder_helper(df, category_lst, response):
+def encoder_helper(df, category_lst, response='Churn'):
     '''
     helper function to turn each categorical column into a new column with
     proportion of churn for each category - associated with cell 15 from the 
@@ -160,23 +160,30 @@ def encoder_helper(df, category_lst, response):
     input:
             df: pandas dataframe
             category_lst: list of columns that contain categorical features
-            response: string of response name [optional argument that could 
-                      be used for naming variables or index y column]
+            response: string of response name [optional argument that names
+            the target category for the mean encoding - default is 'Churn']
 
     output:
-            df: pandas dataframe with new columns for
+            df_encoded: pandas dataframe with new columns for mean encoded
+                        categorical features in extra columns
     '''
-    # for category in category_lst:
-    #     cat_name = category + '_Churn'
-    #     cat_lst = []
-    #     cat_groups = df.groupby(category).mean()['Churn']
-    #     for val in df[category]:
-    #         cat_lst.append(cat_groups.loc[val])
-    #     df[cat_name] = cat_lst
+    df_encoded = df.copy()
+    for category in category_lst:
+        cat_name = category + '_' + response
+        cat_lst = []
+        # only calculate the mean for the passed response column
+        # mean() only works for numeric columns which results in errors
+        # if we request non numeric response columns
+        # this is the easily readable but inefficient way:
+        # cat_groups = df_encoded.groupby(category)[response].mean()
+        # for val in df_encoded[category]:
+        #     cat_lst.append(cat_groups.loc[val])
+        # df_encoded[cat_name] = cat_lst
+        # more efficient way:
+        df_encoded[cat_name] = df_encoded.groupby(category)[response].transform('mean')
+    return df_encoded
 
-
-
-def perform_feature_engineering(df, response):
+def perform_feature_engineering(df, response='Churn'):
     '''
     input:
               df: pandas dataframe
@@ -189,6 +196,12 @@ def perform_feature_engineering(df, response):
               y_train: y training data
               y_test: y testing data
     '''
+    print("Starting split of data for training...")
+    X_train, X_test, y_train, y_test = train_test_split(X, 
+                                                        y, 
+                                                        test_size= 0.3, 
+                                                        random_state=42)
+    return X_train, X_test, y_train, y_test
 
 def classification_report_image(y_train,
                                 y_test,
@@ -244,9 +257,21 @@ if __name__ == "__main__":
     df = import_data("./data/bank_data.csv")
     perform_eda(df)
     gender_lst = []
-    category_lst = ['Gender', 'Education_Level', 'Maritial_Status',
+    category_lst = ['Gender', 'Education_Level', 'Marital_Status',
                     'Income_Category', 'Card_Category']
+    y = df['Churn']
+    print("y.head: \n", y.head())
     X = pd.DataFrame()
-    encoder_helper(df, category_lst, X)
-    print(df.head())
+    df_encoded = encoder_helper(df, category_lst, 'Churn')
+    keep_cols = ['Customer_Age', 'Dependent_count', 'Months_on_book',
+             'Total_Relationship_Count', 'Months_Inactive_12_mon',
+             'Contacts_Count_12_mon', 'Credit_Limit', 'Total_Revolving_Bal',
+             'Avg_Open_To_Buy', 'Total_Amt_Chng_Q4_Q1', 'Total_Trans_Amt',
+             'Total_Trans_Ct', 'Total_Ct_Chng_Q4_Q1', 'Avg_Utilization_Ratio',
+             'Gender_Churn', 'Education_Level_Churn', 'Marital_Status_Churn', 
+             'Income_Category_Churn', 'Card_Category_Churn']
+    X[keep_cols] = df_encoded[keep_cols]
+    print(X.head())
+    perform_feature_engineering(df_encoded, 'Churn')
+
     
