@@ -1,58 +1,71 @@
 # library doc string
-'''The churn_library.py is a library of functions to find customers, 
-who are likely to churn. It reads customer data from a csv file, 
-performs exploratory data analysis (EDA), 
+'''
+The churn_library.py is a library of functions to find customers,
+who are likely to churn. It reads customer data from a csv file,
+performs exploratory data analysis (EDA),
 encodes categorical variables, performs feature engineering, trains
-machine learning models (logistic regression and random forest), 
-evaluates the models, creates explanability plots using SHAP values 
+machine learning models (logistic regression and random forest),
+evaluates the models, creates explanability plots using SHAP values
 and saves the models to disk.
-Processing is completed by providing features importance plots 
+Processing is completed by providing features importance plots
 and ROC curves, for assisting in estimating future custoemr churn.
 Each function is documented with input and output specifications.
+
+Authors: Udacity and Elmar Maas
+Date of last update: November 05, 2025
 '''
 
 # import libraries
-
-import seaborn as sns
+import time
+import logging
 import os
+
+from collections import namedtuple
+
+# The joblib library is used for efficiently serializing (saving) and
+# deserializing (loading) Python objects, especially large data like
+# machine learning models or NumPy arrays. It is commonly used to save trained
+# models to disk and load them later for predictions or further analysis.
+import joblib
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# The shap library (SHapley Additive exPlanations) is used to explain
+# the output of machine learning models. It provides tools to interpret
+# model predictions by calculating feature importance values based on
+# Shapley values from cooperative game theory.
+# This helps you understand how each feature contributes to a
+# specific prediction or to the overall model
+import shap
+
+# plot_roc_curve is depricated:
+# from sklearn.metrics import plot_roc_curve
+# replaced by newer RocCurveDisplay:
+from sklearn.metrics import RocCurveDisplay
+from sklearn.metrics import classification_report
 from sklearn.model_selection import GridSearchCV
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import normalize
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
-'''The logging library is in this context used for reporting eda and 
-other data during the processing.
-It helps developers monitor and debug their code by
-recording messages about the program's execution, errors, and other
-important information.'''
-import logging
-'''The joblib library is used for efficiently serializing (saving) and 
-deserializing (loading) Python objects, especially large data like 
-machine learning models or NumPy arrays. It is commonly used to save trained 
-models to disk and load them later for predictions or further analysis.'''
-import joblib
-'''The shap library (SHapley Additive exPlanations) is used to explain 
-the output of machine learning models. It provides tools to interpret 
-model predictions by calculating feature importance values based on 
-Shapley values from cooperative game theory. 
-This helps you understand how each feature contributes to a 
-specific prediction or to the overall model '''
-import shap
-import time
 
-sns.set()
-
-from sklearn.metrics import classification_report
-
-# plot_roc_curve is depricated:
-#from sklearn.metrics import plot_roc_curve
-# replaced by newer RocCurveDisplay
-from sklearn.metrics import RocCurveDisplay
+# set seaborn theme for plots
+sns.set_theme()
 
 os.environ['QT_QPA_PLATFORM'] = 'offscreen'
+
+ClassifierData = namedtuple('ClassifierData',
+                            ['y_train',
+                             'y_test',
+                             'y_train_preds_lr',
+                             'y_train_preds_rf',
+                             'y_test_preds_lr',
+                             'y_test_preds_rf'])
+
+# set up logging
+if not os.path.exists('logs'):
+    os.makedirs('logs')
 
 eda_logger = logging.getLogger('churn.eda')
 eda_handler = logging.FileHandler('./logs/churn_eda.log',
@@ -65,12 +78,13 @@ eda_logger.setLevel(logging.INFO)
 
 lib_logger = logging.getLogger('churn.library')
 lib_handler = logging.FileHandler('./logs/churn_library.log',
-                                   mode='w')  # overwrite log file each run
+                                  mode='w')  # overwrite log file each run
 lib_formatter = logging.Formatter(
     '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 lib_handler.setFormatter(lib_formatter)
 lib_logger.addHandler(lib_handler)
 lib_logger.setLevel(logging.INFO)
+
 
 def import_data(pth):
     '''
@@ -82,45 +96,48 @@ def import_data(pth):
             df: pandas dataframe
     '''
     try:
-        df = pd.read_csv(pth,
-                         encoding='utf-8')
-        return df
+        df_imported = pd.read_csv(pth,
+                                  encoding='utf-8')
+        return df_imported
     except FileNotFoundError as err:
-        eda_logger.error("File not found", err)
+        eda_logger.error("File not found: %s", err)
+        raise err
+    except Exception as err:
+        eda_logger.error("Error importing data: %s", err)
         raise err
 
 
-def perform_eda(df):
+def perform_eda(eda_df):
     '''
-    perform eda (exploratory data analysis on df and save figures to 
+    perform eda (exploratory data analysis) on eda_df and save figures to
     images folder
     input:
-            df: pandas dataframe
+            eda_df: pandas dataframe
 
     output:
             None
     '''
-    eda_logger.info("Data preview:\n%s", df.head())
-    eda_logger.info("Data dimension: %s", df.shape)
-    eda_logger.info("Missing values per column:\n%s", df.isnull().sum())
-    eda_logger.info("Data description:\n%s", df.describe())
+    eda_logger.info("Data preview:\n%s", eda_df.head())
+    eda_logger.info("Data dimension: %s", eda_df.shape)
+    eda_logger.info("Missing values per column:\n%s", eda_df.isnull().sum())
+    eda_logger.info("Data description:\n%s", eda_df.describe())
     # check whether Attrition Flag has two unique values
     eda_logger.info("Unique values in 'Attrition_Flag': %s",
-                    df['Attrition_Flag'].unique())
-    if df['Attrition_Flag'].nunique() == 2:
+                    eda_df['Attrition_Flag'].unique())
+    if eda_df['Attrition_Flag'].nunique() == 2:
         eda_logger.info("'Attrition_Flag' has two unique values as expected.")
     else:
         eda_logger.warning("'Attrition_Flag' does not have two unique values."
                            " Check data integrity.")
     # change text in data field to numerical value for churn in order to
     # prepare data for supervised learning
-    df['Churn'] = df['Attrition_Flag'].apply(
+    eda_df['Churn'] = eda_df['Attrition_Flag'].apply(
         lambda val: 0 if val == "Existing Customer"
         else 1)
 
     # Create and save the histogram
     plt.figure(figsize=(20, 10))
-    df['Churn'].hist()
+    eda_df['Churn'].hist()
     plt.title('Churn Distribution')
     plt.xlabel('Churn (0=Existing, 1=Churned)')
     plt.ylabel('Rate')
@@ -128,7 +145,7 @@ def perform_eda(df):
     plt.close()
 
     plt.figure(figsize=(20, 10))
-    df['Customer_Age'].hist()
+    eda_df['Customer_Age'].hist()
     plt.title('Customer Age Distribution')
     plt.xlabel('Age')
     plt.ylabel('# of customers')
@@ -137,7 +154,7 @@ def perform_eda(df):
     plt.close()
 
     plt.figure(figsize=(20, 10))
-    marital_counts = df.Marital_Status.value_counts('normalize')
+    marital_counts = eda_df.Marital_Status.value_counts('normalize')
     sns.barplot(x=marital_counts.index,
                 y=marital_counts.values,
                 hue=marital_counts.index,
@@ -152,10 +169,10 @@ def perform_eda(df):
 
     plt.figure(figsize=(20, 10))
     # distplot is deprecated. Use histplot instead
-    # sns.distplot(df['Total_Trans_Ct']);
+    # sns.distplot(eda_df['Total_Trans_Ct']);
     # Show distributions of 'Total_Trans_Ct' and add a smooth curve
     # obtained using a kernel density estimate
-    sns.histplot(df['Total_Trans_Ct'], stat='density', kde=True)
+    sns.histplot(eda_df['Total_Trans_Ct'], stat='density', kde=True)
     plt.title('Transitions')
     plt.xlabel('Total_Trans_Ct')
     plt.ylabel('Density')
@@ -166,10 +183,10 @@ def perform_eda(df):
     plt.figure(figsize=(20, 10))
     plt.title('Feature Correlation Heatmap')
     # for heatmap only numeric columns can be used:
-    numeric_df = df.select_dtypes(include=[np.number])
+    numeric_eda_df = eda_df.select_dtypes(include=[np.number])
     # use a sequential color map for the heatmap such that correlation
     # is more intuitively visible
-    sns.heatmap(numeric_df.corr(),
+    sns.heatmap(numeric_eda_df.corr(),
                 annot=False, cmap='viridis', linewidths=2)
     plt.savefig('./images/feature_correlation_heatmap.png',
                 bbox_inches='tight', dpi=300)
@@ -179,7 +196,7 @@ def perform_eda(df):
 def encoder_helper(df, category_lst, response='Churn'):
     '''
     helper function to turn each categorical column into a new column with
-    proportion of churn for each category - associated with cell 15 from the 
+    proportion of churn for each category - associated with cell 15 from the
     notebook
 
     input:
@@ -216,46 +233,52 @@ def perform_feature_engineering(df, response='Churn'):
     '''
     input:
               df: pandas dataframe
-              response: string of response name [optional argument that 
+              response: string of response name [optional argument that
               could be used for naming variables or index y column]
 
     output:
-              X_train: X training data
-              X_test: X testing data
+              x_train: X training data
+              x_test: X testing data
               y_train: y training data
               y_test: y testing data
     '''
-    y = df[response]
-    X = pd.DataFrame()
+    y_df = df[response]
+    x_df = pd.DataFrame()
     category_lst = ['Gender', 'Education_Level', 'Marital_Status',
                     'Income_Category', 'Card_Category']
     df_encoded = encoder_helper(df, category_lst, 'Churn')
-    keep_cols = ['Customer_Age', 'Dependent_count', 'Months_on_book',
-                 'Total_Relationship_Count', 'Months_Inactive_12_mon',
-                 'Contacts_Count_12_mon', 'Credit_Limit', 'Total_Revolving_Bal',
-                 'Avg_Open_To_Buy', 'Total_Amt_Chng_Q4_Q1', 'Total_Trans_Amt',
-                 'Total_Trans_Ct', 'Total_Ct_Chng_Q4_Q1', 'Avg_Utilization_Ratio',
-                 'Gender_Churn', 'Education_Level_Churn', 'Marital_Status_Churn',
-                 'Income_Category_Churn', 'Card_Category_Churn']
-    X[keep_cols] = df_encoded[keep_cols]
-    X_train, X_test, y_train, y_test = train_test_split(X,
-                                                        y,
-                                                        test_size=0.3,
-                                                        random_state=42)
+    keep_cols = [
+        'Customer_Age',
+        'Dependent_count',
+        'Months_on_book',
+        'Total_Relationship_Count',
+        'Months_Inactive_12_mon',
+        'Contacts_Count_12_mon',
+        'Credit_Limit',
+        'Total_Revolving_Bal',
+        'Avg_Open_To_Buy',
+        'Total_Amt_Chng_Q4_Q1',
+        'Total_Trans_Amt',
+        'Total_Trans_Ct',
+        'Total_Ct_Chng_Q4_Q1',
+        'Avg_Utilization_Ratio',
+        'Gender_Churn',
+        'Education_Level_Churn',
+        'Marital_Status_Churn',
+        'Income_Category_Churn',
+        'Card_Category_Churn']
+    x_df[keep_cols] = df_encoded[keep_cols]
+    x_df_train, x_df_test, y_df_train, y_df_test = train_test_split(
+        x_df, y_df, test_size=0.3, random_state=42)
     eda_logger.info("Performed feature engineering and split data."
-                    " X_train shape: %s, X_test shape: %s",
-                    X_train.shape, X_test.shape)
-    return X_train, X_test, y_train, y_test
+                    " x_train shape: %s, x_test shape: %s",
+                    x_df_train.shape, x_df_test.shape)
+    return x_df_train, x_df_test, y_df_train, y_df_test
 
 
-def classification_report_image(y_train,
-                                y_test,
-                                y_train_preds_lr,
-                                y_train_preds_rf,
-                                y_test_preds_lr,
-                                y_test_preds_rf):
+def classification_report_image(cf_dat: ClassifierData):
     '''
-    produces classification report for training and testing results and 
+    produces classification report for training and testing results and
     stores report as image in images folder
     input:
             y_train: training response values
@@ -267,60 +290,68 @@ def classification_report_image(y_train,
 
     output:
              None (as return parameter)
-             But there is a side-effect output: The classification report 
+             But there is a side-effect output: The classification report
              is saved as image files in images folder
     '''
-    # Random Forest Report  
+
+    # Random Forest Report
     plt.figure(figsize=(8, 10))  # increased figure size w.r.t. notebook
-    plt.text(0.01, 0.9, 'Random Forest Train', 
+    plt.text(0.01, 0.9, 'Random Forest Train',
              {'fontsize': 12}, fontweight='bold')
-    plt.text(0.01, 0.7, str(classification_report(y_train, y_train_preds_rf)), 
+    plt.text(0.01, 0.7, str(classification_report(cf_dat.y_train,
+                                                  cf_dat.y_train_preds_rf)),
              {'fontsize': 10}, fontproperties='monospace')
-    
-    plt.text(0.01, 0.5, 'Random Forest Test', 
+
+    plt.text(0.01, 0.5, 'Random Forest Test',
              {'fontsize': 12}, fontweight='bold')
-    plt.text(0.01, 0.3, str(classification_report(y_test, y_test_preds_rf)), 
+    plt.text(0.01, 0.3, str(classification_report(cf_dat.y_test,
+                                                  cf_dat.y_test_preds_rf)),
              {'fontsize': 10}, fontproperties='monospace')
-    
+
     plt.xlim(0, 1)
     plt.ylim(0, 1)  # Set explicit limits
     plt.axis('off')
-    plt.savefig('./images/random_forest_classifier_report.png', 
+    plt.savefig('./images/random_forest_classifier_report.png',
                 bbox_inches='tight', dpi=300)
     plt.close()
 
     # Logistic Regression Report
     plt.figure(figsize=(8, 10))  # Larger figure size
-    plt.text(0.01, 0.9, 'Logistic Regression Train', 
+    plt.text(0.01, 0.9, 'Logistic Regression Train',
              {'fontsize': 12}, fontweight='bold')
-    plt.text(0.01, 0.7, str(classification_report(y_train, y_train_preds_lr)), 
-             {'fontsize': 10}, fontproperties='monospace')
-    
-    plt.text(0.01, 0.5, 'Logistic Regression Test', 
+    plt.text(
+        0.01, 0.7, str(
+            classification_report(
+                cf_dat.y_train, cf_dat.y_train_preds_lr)), {
+            'fontsize': 10}, fontproperties='monospace')
+
+    plt.text(0.01, 0.5, 'Logistic Regression Test',
              {'fontsize': 12}, fontweight='bold')
-    plt.text(0.01, 0.3, str(classification_report(y_test, y_test_preds_lr)), 
-             {'fontsize': 10}, fontproperties='monospace')
-    
+    plt.text(
+        0.01, 0.3, str(
+            classification_report(
+                cf_dat.y_test, cf_dat.y_test_preds_lr)), {
+            'fontsize': 10}, fontproperties='monospace')
+
     plt.xlim(0, 1)
     plt.ylim(0, 1)  # Set explicit limits
     plt.axis('off')
-    plt.savefig('./images/logistic_regression_classifier_report.png', 
+    plt.savefig('./images/logistic_regression_classifier_report.png',
                 bbox_inches='tight', dpi=300)
     plt.close()
 
 
-def feature_importance_plot(model, X_data, output_pth):
+def feature_importance_plot(model, x_data, output_pth):
     '''
     creates and stores the feature importances in pth
     input:
             model: model object containing feature_importances_
-            X_data: pandas dataframe of X values
+            x_data : pandas dataframe of X values
             output_pth: path to store the figures
 
     output:
              None
     '''
-    
 
     # Calculate feature importances
     importances = model.feature_importances_
@@ -328,39 +359,122 @@ def feature_importance_plot(model, X_data, output_pth):
     indices = np.argsort(importances)[::-1]
 
     # Rearrange feature names so they match the sorted feature importances
-    names = [X_data.columns[i] for i in indices]
+    names = [x_data.columns[i] for i in indices]
 
     # Create plot
-    plt.figure(figsize=(20,5))
+    plt.figure(figsize=(20, 5))
 
     # Create plot title
     plt.title("Feature Importance")
     plt.ylabel('Importance')
 
     # Add bars
-    plt.bar(range(X_data.shape[1]), importances[indices])
+    plt.bar(range(x_data .shape[1]), importances[indices])
 
     # Add feature names as x-axis labels
-    plt.xticks(range(X_data.shape[1]), names, rotation=90)
+    plt.xticks(range(x_data .shape[1]), names, rotation=90)
     plt.savefig(output_pth, bbox_inches='tight', dpi=300)
     plt.close()
 
-def train_models(X_train, X_test, y_train, y_test):
+
+def shap_explanation_plot(model, x_data, output_pth):
+    '''
+    creates and stores the SHAP explanation plot in pth
+    input:
+            model: model object
+            x_data : pandas dataframe of X values
+            output_pth: path to store the figures
+
+    output:
+             None
+    '''
+    # SHAP explanation plot
+    try:
+        lib_logger.info("Starting SHAP explanation...")
+        lib_logger.info("x_data shape: %s", x_data.shape)
+        lib_logger.info("Model type: %s", type(model))
+        explainer = shap.TreeExplainer(model)
+        shap_values = explainer.shap_values(x_data)
+
+        plt.figure(figsize=(20, 20))
+        shap.summary_plot(shap_values[1],
+                          x_data,
+                          plot_type="bar",
+                          show=False)
+        plt.savefig(output_pth, bbox_inches='tight', dpi=300)
+        plt.close()
+    except ValueError as e:
+        # Most common: data shape mismatches, invalid parameters
+        lib_logger.error("SHAP ValueError (data/parameter issue): %s", e)
+    except IndexError as e:
+        # Your current issue: array index problems
+        lib_logger.error("SHAP IndexError (array access issue): %s", e)
+    except AttributeError as e:
+        # Missing attributes or methods
+        lib_logger.error("SHAP AttributeError (missing attribute): %s", e)
+    except TypeError as e:
+        # Wrong data types passed
+        lib_logger.error("SHAP TypeError (wrong data type): %s", e)
+    except MemoryError as e:
+        # Large datasets causing memory issues
+        lib_logger.error("SHAP MemoryError (insufficient memory): %s", e)
+    except Exception as exc:  # pylint: disable=broad-except
+        lib_logger.error("Unexpected SHAP error (%s): %s",
+                         type(exc).__name__, exc)
+        # Log full traceback for debugging
+        lib_logger.debug("Full traceback:", exc_info=True)
+    # intentionally continue processing even if SHAP plot fails
+
+
+def roc_curve_report_image(cv_rfc, lrc, x_test, y_test):
+    '''
+    creates and stores a combined ROC curve plot for
+    two models into images folder
+    input:
+            cv_rfc: RandomForestClassifier model after hyperparameter tuning
+            lrc: LogisticRegression model
+            x_test: X testing data
+            y_test: y testing data
+    '''
+    # now plot both curves into the same figure
+    plt.figure(figsize=(15, 6))
+    ax = plt.gca()  # Get current axes
+
+    # Replaced deprecated plot_roc_curve from notebook with RocCurveDisplay
+    # Plot Logistic Regression ROC with blue color
+    RocCurveDisplay.from_estimator(lrc, x_test, y_test, ax=ax, alpha=0.8,
+                                   color='red', name='Logistic Regression')
+
+    # Plot Random Forest ROC with red color
+    RocCurveDisplay.from_estimator(cv_rfc.best_estimator_, x_test, y_test,
+                                   ax=ax, alpha=0.8,
+                                   color='blue', name='Random Forest')
+
+    plt.title('ROC Curves Comparison')
+    plt.legend()  # Show legend to distinguish the curves
+    plt.grid(True, alpha=0.3)  # Optional: add grid for better readability
+    plt.tight_layout()
+    plt.savefig('./images/roc_curves_comparison.png',
+                bbox_inches='tight', dpi=300)
+    plt.close()
+
+
+def train_models(x_train, x_test, y_train, y_test):
     '''
     train, store model results: images + scores, and store models
     input:
-              X_train: X training data
-              X_test: X testing data
+              x_train: X training data
+              x_test: X testing data
               y_train: y training data
               y_test: y testing data
     output:
               None
     '''
-    starttime = time.time() # for measuring training time
+    starttime = time.time()  # for measuring training time
     # grid search
     rfc = RandomForestClassifier(random_state=42)
 
-    # Default solver 'lbfgs' failed to converge thus we use 
+    # Default solver 'lbfgs' failed to converge thus we use
     # liblinear solver instead which is good for small (~10k samples) datasets:
     lrc = LogisticRegression(solver='liblinear', max_iter=3000)
 
@@ -372,19 +486,26 @@ def train_models(X_train, X_test, y_train, y_test):
     }
 
     cv_rfc = GridSearchCV(estimator=rfc, param_grid=param_grid, cv=5)
-    cv_rfc.fit(X_train, y_train)
+    cv_rfc.fit(x_train, y_train)
 
-    lrc.fit(X_train, y_train)
+    lrc.fit(x_train, y_train)
 
     elapsed = time.time() - starttime
     lib_logger.info("Model training completed in %.4f seconds", elapsed)
     # make predictions
-    y_train_preds_rf = cv_rfc.best_estimator_.predict(X_train)
-    y_test_preds_rf = cv_rfc.best_estimator_.predict(X_test)
+    y_train_preds_rf = cv_rfc.best_estimator_.predict(x_train)
+    y_test_preds_rf = cv_rfc.best_estimator_.predict(x_test)
 
-    y_train_preds_lr = lrc.predict(X_train)
-    y_test_preds_lr = lrc.predict(X_test)
+    y_train_preds_lr = lrc.predict(x_train)
+    y_test_preds_lr = lrc.predict(x_test)
 
+    classifier_data = ClassifierData(y_train=y_train,
+                                     y_test=y_test,
+                                     y_train_preds_lr=y_train_preds_lr,
+                                     y_train_preds_rf=y_train_preds_rf,
+                                     y_test_preds_lr=y_test_preds_lr,
+                                     y_test_preds_rf=y_test_preds_rf
+                                     )
     # scores
     lib_logger.info('random forest results')
     lib_logger.info('test results')
@@ -397,99 +518,35 @@ def train_models(X_train, X_test, y_train, y_test):
     lib_logger.info(classification_report(y_test, y_test_preds_lr))
     lib_logger.info('train results')
     lib_logger.info(classification_report(y_train, y_train_preds_lr))
-    
-    
-    # Replaced deprecated plot_roc_curve with RocCurveDisplay
-    # lrc_plot = plot_roc_curve(lrc, X_test, y_test)
-    RocCurveDisplay.from_estimator(lrc, X_test, y_test)
-    plt.savefig('./images/roc_curve_logistic_regression.png', 
-                bbox_inches='tight', dpi=300)
-    
-    # now plot both curves into the same figure
-    plt.figure(figsize=(15, 6))
-    ax = plt.gca()  # Get current axes
 
-    # Plot Logistic Regression ROC with blue color
-    RocCurveDisplay.from_estimator(lrc, X_test, y_test, ax=ax, alpha=0.8, 
-                                color='red', name='Logistic Regression')
-
-    # Plot Random Forest ROC with red color  
-    RocCurveDisplay.from_estimator(cv_rfc.best_estimator_, X_test, y_test, 
-                                    ax=ax, alpha=0.8,
-                                    color='blue', name='Random Forest')
-
-    plt.title('ROC Curves Comparison')
-    plt.legend()  # Show legend to distinguish the curves
-    plt.grid(True, alpha=0.3)  # Optional: add grid for better readability
-    plt.tight_layout()
-    plt.savefig('./images/roc_curves_comparison.png', 
-                bbox_inches='tight', dpi=300)
-    plt.close()
+    # ROC curves combined plot:
+    roc_curve_report_image(cv_rfc, lrc, x_test, y_test)
 
     # save best model with hyperparameter tuning:
     joblib.dump(cv_rfc.best_estimator_, './models/rfc_model.pkl')
     # no hyperparameter tuning for logistic regression implemented - hence
     # save the model as is:
     joblib.dump(lrc, './models/logistic_model.pkl')
-    
+
     # create images for classification report
-    classification_report_image(y_train,
-                                y_test,
-                                y_train_preds_lr,
-                                y_train_preds_rf,
-                                y_test_preds_lr,
-                                y_test_preds_rf)
-    try:
-        lib_logger.info("Starting SHAP explanation...")
-        lib_logger.info("X_train shape: %s", X_train.shape)
-        lib_logger.info("Model type: %s", type(cv_rfc.best_estimator_))
-        # SHAP_explanation_image_path = output_pth.replace('.png',
-        #                                                 '_shap_summary.png')
-        explainer = shap.TreeExplainer(cv_rfc.best_estimator_)
-        # Use a smaller sample for explanation
-        sample_size = min(100, len(X_train))
-        X_sample = X_train.sample(n=sample_size, random_state=42)
+    classification_report_image(classifier_data)
 
-        lib_logger.info("X_sample shape: %s", X_sample.shape)
-        lib_logger.info("X_sample columns: %s", X_sample.columns.tolist())
-
-        shap_values = explainer.shap_values(X_sample)
-        # Handle binary classification - shap_values is a list
-        if isinstance(shap_values, list):
-             lib_logger.info("SHAP values is list with %d elements", 
-                             len(shap_values))
-             shap_values = shap_values[1]  # Use positive class (churn)
-        else:
-            lib_logger.info("SHAP values is array with shape: %s", 
-                            shap_values.shape)
-                
-        plt.figure(figsize=(20, 20))
-        # newer API crashes with index out of range error
-        # shap.plots.bar(shap_values, show=False)
-        plt.title("SHAP Feature Importance Bar Plot")
-        # thus we revert to older API for now:
-        shap.summary_plot(
-            shap_values, 
-            X_sample, 
-            plot_type="bar", 
-            show=False,
-            max_display=19)
-        plt.savefig('./images/feature_shap_explanation.png')
-        plt.close()
-    except Exception as e:
-        lib_logger.error("Error generating SHAP explanation plot: %s", e)
-        # intentionally continue processing even if SHAP plot fails
+    shap_explanation_plot(cv_rfc.best_estimator_,
+                          x_test,
+                          './images/feature_shap_explanation.png')
 
     # trigger feature importance plot
     feature_importance_plot(cv_rfc.best_estimator_,
-                            X_test,
+                            x_test,
                             './images/feature_importance.png')
-    
-    
+
 
 if __name__ == "__main__":
     # call functions according to sequencediagram.jpg
-    df = import_data("./data/bank_data.csv")
-    perform_eda(df)
-    X_train, X_test, y_train, y_test = perform_feature_engineering(df, 'Churn')
-    train_models(X_train, X_test, y_train, y_test)
+    bank_df = import_data("./data/bank_data.csv")
+    perform_eda(bank_df)
+    bank_df_split = perform_feature_engineering(bank_df, 'Churn')
+    train_models(bank_df_split[0],
+                 bank_df_split[1],
+                 bank_df_split[2],
+                 bank_df_split[3])
