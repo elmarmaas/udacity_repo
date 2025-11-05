@@ -8,7 +8,7 @@ machine learning models (logistic regression and random forest),
 evaluates the models, creates explanability plots using SHAP values
 and saves the models to disk.
 Processing is completed by providing features importance plots
-and ROC curves, for assisting in estimating future custoemr churn.
+and ROC curves, for assisting in estimating future customer churn.
 Each function is documented with input and output specifications.
 
 Authors: Udacity and Elmar Maas
@@ -100,10 +100,10 @@ def import_data(pth):
                                   encoding='utf-8')
         return df_imported
     except FileNotFoundError as err:
-        eda_logger.error("File not found: %s", err)
+        lib_logger.error("File not found: %s", err)
         raise err
     except Exception as err:
-        eda_logger.error("Error importing data: %s", err)
+        lib_logger.error("Error importing data: %s", err)
         raise err
 
 
@@ -116,6 +116,9 @@ def perform_eda(eda_df):
 
     output:
             None
+
+    side effect (output):
+            eda images are saved to images folder
     '''
     eda_logger.info("Data preview:\n%s", eda_df.head())
     eda_logger.info("Data dimension: %s", eda_df.shape)
@@ -281,6 +284,7 @@ def classification_report_image(cf_dat: ClassifierData):
     produces classification report for training and testing results and
     stores report as image in images folder
     input:
+            cf_dat: ClassifierData named tuple containing:
             y_train: training response values
             y_test:  test response values
             y_train_preds_lr: training predictions from logistic regression
@@ -290,7 +294,9 @@ def classification_report_image(cf_dat: ClassifierData):
 
     output:
              None (as return parameter)
-             But there is a side-effect output: The classification report
+
+    side effect (output):
+             The classification report
              is saved as image files in images folder
     '''
 
@@ -351,6 +357,9 @@ def feature_importance_plot(model, x_data, output_pth):
 
     output:
              None
+
+    side effect (output):
+             The feature importance plot is saved to the specified folder
     '''
 
     # Calculate feature importances
@@ -387,6 +396,8 @@ def shap_explanation_plot(model, x_data, output_pth):
 
     output:
              None
+    side effect (output):
+             The shap explanation plot is saved to the specified folder
     '''
     # SHAP explanation plot
     try:
@@ -397,7 +408,7 @@ def shap_explanation_plot(model, x_data, output_pth):
         shap_values = explainer.shap_values(x_data)
 
         plt.figure(figsize=(20, 20))
-        shap.summary_plot(shap_values[1],
+        shap.summary_plot(shap_values,
                           x_data,
                           plot_type="bar",
                           show=False)
@@ -435,6 +446,12 @@ def roc_curve_report_image(cv_rfc, lrc, x_test, y_test):
             lrc: LogisticRegression model
             x_test: X testing data
             y_test: y testing data
+
+    output:
+             None
+
+    side effect (output):
+             The roc curve plot is saved to images folder
     '''
     # now plot both curves into the same figure
     plt.figure(figsize=(15, 6))
@@ -469,6 +486,10 @@ def train_models(x_train, x_test, y_train, y_test):
               y_test: y testing data
     output:
               None
+
+    side effect (output):
+             Several plots are generated in folder images
+             and models are saved in folder models
     '''
     starttime = time.time()  # for measuring training time
     # grid search
@@ -541,12 +562,54 @@ def train_models(x_train, x_test, y_train, y_test):
                             './images/feature_importance.png')
 
 
+def main():
+    '''
+    Main function that executes the complete churn analysis pipeline.
+
+    This function orchestrates the entire customer churn prediction workflow:
+    1. Import data from CSV file
+    2. Perform exploratory data analysis (EDA)
+    3. Perform feature engineering and data splitting
+    4. Train machine learning models (Random Forest and Logistic Regression)
+    5. Generate evaluation plots and save trained models
+
+    Input files:
+        - ./data/bank_data.csv: Customer data file
+
+    Output files:
+        - ./images/: Various analysis and model evaluation plots
+        - ./models/: Trained model files (rfc_model.pkl, logistic_model.pkl)
+        - ./logs/: Application log files
+
+    Raises:
+        FileNotFoundError: If the input data file is not found
+        ValueError: If data processing encounters invalid data
+        Exception: For any other unexpected errors during processing
+
+    Returns:
+        None
+    '''
+    try:
+        # Call functions according to sequence diagram
+        bank_df = import_data("./data/bank_data.csv")
+        perform_eda(bank_df)
+        bank_df_split = perform_feature_engineering(bank_df, 'Churn')
+        train_models(bank_df_split[0],
+                     bank_df_split[1],
+                     bank_df_split[2],
+                     bank_df_split[3])
+        lib_logger.info("Churn analysis pipeline completed successfully")
+
+    except FileNotFoundError as exc:
+        lib_logger.error("Data file not found: %s", exc)
+        raise
+    except (ValueError, KeyError) as exc:
+        lib_logger.error("Data processing error: %s", exc)
+        raise
+    except Exception as exc:  # pylint: disable=broad-except
+        lib_logger.error("Unexpected error in main pipeline: %s", exc)
+        raise
+
+
 if __name__ == "__main__":
-    # call functions according to sequencediagram.jpg
-    bank_df = import_data("./data/bank_data.csv")
-    perform_eda(bank_df)
-    bank_df_split = perform_feature_engineering(bank_df, 'Churn')
-    train_models(bank_df_split[0],
-                 bank_df_split[1],
-                 bank_df_split[2],
-                 bank_df_split[3])
+    main()
