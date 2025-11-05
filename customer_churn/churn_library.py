@@ -320,13 +320,7 @@ def feature_importance_plot(model, X_data, output_pth):
     output:
              None
     '''
-    SHAP_explanation_image_path = output_pth.replace('.png',
-                                                  '_shap_summary.png')
-    explainer = shap.TreeExplainer(model)
-    shap_values = explainer.shap_values(X_data)
-    shap.summary_plot(shap_values, X_data, plot_type="bar", show=False)
-    plt.savefig(SHAP_explanation_image_path, bbox_inches='tight', dpi=300)
-    plt.close()
+    
 
     # Calculate feature importances
     importances = model.feature_importances_
@@ -445,6 +439,46 @@ def train_models(X_train, X_test, y_train, y_test):
                                 y_train_preds_rf,
                                 y_test_preds_lr,
                                 y_test_preds_rf)
+    try:
+        lib_logger.info("Starting SHAP explanation...")
+        lib_logger.info("X_train shape: %s", X_train.shape)
+        lib_logger.info("Model type: %s", type(cv_rfc.best_estimator_))
+        # SHAP_explanation_image_path = output_pth.replace('.png',
+        #                                                 '_shap_summary.png')
+        explainer = shap.TreeExplainer(cv_rfc.best_estimator_)
+        # Use a smaller sample for explanation
+        sample_size = min(100, len(X_train))
+        X_sample = X_train.sample(n=sample_size, random_state=42)
+
+        lib_logger.info("X_sample shape: %s", X_sample.shape)
+        lib_logger.info("X_sample columns: %s", X_sample.columns.tolist())
+
+        shap_values = explainer.shap_values(X_sample)
+        # Handle binary classification - shap_values is a list
+        if isinstance(shap_values, list):
+             lib_logger.info("SHAP values is list with %d elements", 
+                             len(shap_values))
+             shap_values = shap_values[1]  # Use positive class (churn)
+        else:
+            lib_logger.info("SHAP values is array with shape: %s", 
+                            shap_values.shape)
+                
+        plt.figure(figsize=(20, 20))
+        # newer API crashes with index out of range error
+        # shap.plots.bar(shap_values, show=False)
+        plt.title("SHAP Feature Importance Bar Plot")
+        # thus we revert to older API for now:
+        shap.summary_plot(
+            shap_values, 
+            X_sample, 
+            plot_type="bar", 
+            show=False,
+            max_display=19)
+        plt.savefig('./images/feature_shap_explanation.png')
+        plt.close()
+    except Exception as e:
+        lib_logger.error("Error generating SHAP explanation plot: %s", e)
+        # intentionally continue processing even if SHAP plot fails
 
     # trigger feature importance plot
     feature_importance_plot(cv_rfc.best_estimator_,
