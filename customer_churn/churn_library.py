@@ -144,7 +144,8 @@ def perform_eda(eda_df):
     plt.title('Churn Distribution')
     plt.xlabel('Churn (0=Existing, 1=Churned)')
     plt.ylabel('Rate')
-    plt.savefig('./images/churn_histogram.png', bbox_inches='tight', dpi=300)
+    plt.savefig('./images/eda/churn_distribution.png', 
+                bbox_inches='tight', dpi=300)
     plt.close()
 
     plt.figure(figsize=(20, 10))
@@ -152,7 +153,7 @@ def perform_eda(eda_df):
     plt.title('Customer Age Distribution')
     plt.xlabel('Age')
     plt.ylabel('# of customers')
-    plt.savefig('./images/customer_age_histogram.png',
+    plt.savefig('./images/eda/customer_age_distribution.png',
                 bbox_inches='tight', dpi=300)
     plt.close()
 
@@ -166,7 +167,7 @@ def perform_eda(eda_df):
     plt.title('Marital Status')
     plt.xlabel('Marital Status')
     plt.ylabel('Ratio of customers (per status)')
-    plt.savefig('./images/customer_marital_status_historgram.png',
+    plt.savefig('./images/eda/customer_marital_status_distribution.png',
                 bbox_inches='tight', dpi=300)
     plt.close()
 
@@ -179,7 +180,7 @@ def perform_eda(eda_df):
     plt.title('Transitions')
     plt.xlabel('Total_Trans_Ct')
     plt.ylabel('Density')
-    plt.savefig('./images/density_vs_total_trans_ct_historgram.png',
+    plt.savefig('./images/eda/total_transition_distribution.png',
                 bbox_inches='tight', dpi=300)
     plt.close()
 
@@ -191,7 +192,7 @@ def perform_eda(eda_df):
     # is more intuitively visible
     sns.heatmap(numeric_eda_df.corr(),
                 annot=False, cmap='viridis', linewidths=2)
-    plt.savefig('./images/feature_correlation_heatmap.png',
+    plt.savefig('./images/eda/feature_correlation_heatmap.png',
                 bbox_inches='tight', dpi=300)
     plt.close()
 
@@ -219,15 +220,16 @@ def encoder_helper(df, category_lst, response='Churn'):
         # mean() only works for numeric columns which results in errors
         # if we request non numeric response columns
         # this is the easily readable but inefficient way:
-        # cat_lst = []
-        # cat_groups = df_encoded.groupby(category)[response].mean()
-        # for val in df_encoded[category]:
-        #     cat_lst.append(cat_groups.loc[val])
-        # df_encoded[cat_name] = cat_lst
+        cat_lst = []
+        cat_groups = df_encoded.groupby(category)[response].mean()
+        for val in df_encoded[category]:
+            cat_lst.append(cat_groups.loc[val])
+        df_encoded[cat_name] = cat_lst
         # more efficient way:
-        df_encoded[cat_name] = df_encoded.groupby(
-            category)[response].transform('mean')
-    eda_logger.info("Encoded dataframe with focus %s, head:\n%s",
+        # !!! this seems to do not the same thing as the code before (found by testing)
+        # df_encoded[cat_name] = df_encoded.groupby(
+        #     category)[response].transform('mean')
+    eda_logger.debug("Encoded dataframe with focus %s, head:\n%s",
                     response, df_encoded.head())
     return df_encoded
 
@@ -317,7 +319,7 @@ def classification_report_image(cf_dat: ClassifierData):
     plt.xlim(0, 1)
     plt.ylim(0, 1)  # Set explicit limits
     plt.axis('off')
-    plt.savefig('./images/random_forest_classifier_report.png',
+    plt.savefig('./images/results/random_forest_classifier_report.png',
                 bbox_inches='tight', dpi=300)
     plt.close()
 
@@ -342,7 +344,7 @@ def classification_report_image(cf_dat: ClassifierData):
     plt.xlim(0, 1)
     plt.ylim(0, 1)  # Set explicit limits
     plt.axis('off')
-    plt.savefig('./images/logistic_regression_classifier_report.png',
+    plt.savefig('./images/results/logistic_regression_classifier_report.png',
                 bbox_inches='tight', dpi=300)
     plt.close()
 
@@ -559,7 +561,7 @@ def train_models(x_train, x_test, y_train, y_test):
     # trigger feature importance plot
     feature_importance_plot(cv_rfc.best_estimator_,
                             x_test,
-                            './images/feature_importance.png')
+                            './images/results/feature_importance_plot.png')
 
 
 def main():
@@ -593,6 +595,7 @@ def main():
         # Call functions according to sequence diagram
         bank_df = import_data("./data/bank_data.csv")
         perform_eda(bank_df)
+        lib_logger.debug("bank_df after EDA: %s", bank_df.head())
         bank_df_split = perform_feature_engineering(bank_df, 'Churn')
         train_models(bank_df_split[0],
                      bank_df_split[1],

@@ -78,7 +78,23 @@ The following output will be generated:
 
 
 ### Testing the library
-Testing the library can be done by running:
+Testing the entire library can be done by running:
 ```bash
-python3 churn_script_logging_and_tests.py
+pytest churn_script_logging_and_tests.py
+```
+
+Enabling verbose output can be done by using the -v flag:
+```bash
+pytest churn_script_logging_and_tests.py -v
+```
+
+Running specific tests can be done by specifying the test explicitly:
+```bash
+pytest churn_script_logging_and_tests.py::test_import -v
+```
+The above commands report the testing results on the commandline. 
+If you want the pytest output to be logged into a file for documenting test
+execution you can redirect the output in the following way (bash syntax):
+```bash
+pytest churn_script_logging_and_tests.py -v 2>&1 | tee logs/pytest_results.log
 ```
