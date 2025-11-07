@@ -144,7 +144,7 @@ def perform_eda(eda_df):
     plt.title('Churn Distribution')
     plt.xlabel('Churn (0=Existing, 1=Churned)')
     plt.ylabel('Rate')
-    plt.savefig('./images/eda/churn_distribution.png', 
+    plt.savefig('./images/eda/churn_distribution.png',
                 bbox_inches='tight', dpi=300)
     plt.close()
 
@@ -220,17 +220,16 @@ def encoder_helper(df, category_lst, response='Churn'):
         # mean() only works for numeric columns which results in errors
         # if we request non numeric response columns
         # this is the easily readable but inefficient way:
-        cat_lst = []
-        cat_groups = df_encoded.groupby(category)[response].mean()
-        for val in df_encoded[category]:
-            cat_lst.append(cat_groups.loc[val])
-        df_encoded[cat_name] = cat_lst
+        # cat_lst = []
+        # cat_groups = df_encoded.groupby(category)[response].mean()
+        # for val in df_encoded[category]:
+        #     cat_lst.append(cat_groups.loc[val])
+        # df_encoded[cat_name] = cat_lst
         # more efficient way:
-        # !!! this seems to do not the same thing as the code before (found by testing)
-        # df_encoded[cat_name] = df_encoded.groupby(
-        #     category)[response].transform('mean')
+        df_encoded[cat_name] = df_encoded.groupby(
+            category)[response].transform('mean')
     eda_logger.debug("Encoded dataframe with focus %s, head:\n%s",
-                    response, df_encoded.head())
+                     response, df_encoded.head())
     return df_encoded
 
 
@@ -473,7 +472,7 @@ def roc_curve_report_image(cv_rfc, lrc, x_test, y_test):
     plt.legend()  # Show legend to distinguish the curves
     plt.grid(True, alpha=0.3)  # Optional: add grid for better readability
     plt.tight_layout()
-    plt.savefig('./images/roc_curves_comparison.png',
+    plt.savefig('./images/results/roc_curves_comparison.png',
                 bbox_inches='tight', dpi=300)
     plt.close()
 
@@ -515,48 +514,61 @@ def train_models(x_train, x_test, y_train, y_test):
 
     elapsed = time.time() - starttime
     lib_logger.info("Model training completed in %.4f seconds", elapsed)
-    # make predictions
-    y_train_preds_rf = cv_rfc.best_estimator_.predict(x_train)
-    y_test_preds_rf = cv_rfc.best_estimator_.predict(x_test)
 
-    y_train_preds_lr = lrc.predict(x_train)
-    y_test_preds_lr = lrc.predict(x_test)
-
-    classifier_data = ClassifierData(y_train=y_train,
-                                     y_test=y_test,
-                                     y_train_preds_lr=y_train_preds_lr,
-                                     y_train_preds_rf=y_train_preds_rf,
-                                     y_test_preds_lr=y_test_preds_lr,
-                                     y_test_preds_rf=y_test_preds_rf
-                                     )
+    # make predictions and store in claissifier_data named tuple
+    classifier_data = ClassifierData(
+        y_train=y_train,
+        y_test=y_test,
+        y_train_preds_lr=lrc.predict(x_train),
+        y_train_preds_rf=cv_rfc.best_estimator_.predict(x_train),
+        y_test_preds_lr=lrc.predict(x_test),
+        y_test_preds_rf=cv_rfc.best_estimator_.predict(x_test))
     # scores
     lib_logger.info('random forest results')
     lib_logger.info('test results')
-    lib_logger.info(classification_report(y_test, y_test_preds_rf))
+    lib_logger.info(
+        classification_report(
+            y_test,
+            classifier_data.y_test_preds_rf))
     lib_logger.info('train results')
-    lib_logger.info(classification_report(y_train, y_train_preds_rf))
+    lib_logger.info(
+        classification_report(
+            y_train,
+            classifier_data.y_train_preds_rf))
 
     lib_logger.info('logistic regression results')
     lib_logger.info('test results')
-    lib_logger.info(classification_report(y_test, y_test_preds_lr))
+    # lib_logger.info(classification_report(y_test, y_test_preds_lr))
+    lib_logger.info(classification_report(y_test,
+                                          classifier_data.y_test_preds_lr))
     lib_logger.info('train results')
-    lib_logger.info(classification_report(y_train, y_train_preds_lr))
+    lib_logger.info(classification_report(y_train,
+                                          classifier_data.y_train_preds_lr))
 
     # ROC curves combined plot:
     roc_curve_report_image(cv_rfc, lrc, x_test, y_test)
 
-    # save best model with hyperparameter tuning:
-    joblib.dump(cv_rfc.best_estimator_, './models/rfc_model.pkl')
-    # no hyperparameter tuning for logistic regression implemented - hence
-    # save the model as is:
-    joblib.dump(lrc, './models/logistic_model.pkl')
+    try:
+        os.makedirs('./models', exist_ok=True)
+    except OSError as exc:
+        lib_logger.error("Error creating models directory: %s", exc)
+        raise exc
+    try:
+        # save best model with hyperparameter tuning:
+        joblib.dump(cv_rfc.best_estimator_, './models/rfc_model.pkl')
+        # no hyperparameter tuning for logistic regression implemented - hence
+        # save the model as is:
+        joblib.dump(lrc, './models/logistic_model.pkl')
+    except OSError as exc:
+        lib_logger.error("Error saving model files: %s", exc)
+        raise exc
 
     # create images for classification report
     classification_report_image(classifier_data)
 
     shap_explanation_plot(cv_rfc.best_estimator_,
                           x_test,
-                          './images/feature_shap_explanation.png')
+                          './images/results/feature_shap_explanation.png')
 
     # trigger feature importance plot
     feature_importance_plot(cv_rfc.best_estimator_,
