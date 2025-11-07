@@ -1,11 +1,9 @@
 # udacity_repo
 This repo is used in Udacity Training Machine Learning DevOps Engineer
 
-Git commands in this lesson are
-git clone
-git status
-git add
-git commit
-git push
+It contains different folders for different exercises.
 
-Cloning was a little bit difficult since GitHub does not support password authentification anymore. Thus one has to create a ssh keypair first and do the cloning via ssh. The owners of the training might want to add this to the training explanation. I was able to do this on my own but beginners might not be capable of finding that out. 
+| Directory Name | Content |
+| ---------------| ------- |
+| **customer_churn** | **Excercise customer_churn - Submission version** |
+| logging_exercise | Logging exercise - only for private use - not submitted |
