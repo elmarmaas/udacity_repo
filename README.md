@@ -6,5 +6,5 @@ It contains different folders for different exercises.
 | Directory Name | Content |
 | ---------------| ------- |
 | **customer_churn** | **Excercise customer_churn - Submission version** |
-| genre_classification | Exercise 14 from Lesson 5 of Training Course 3 Building a reprocible Model Workflow |
+| genre_classification | Exercise 14 from Lesson 5 of Training Course 3 Building a reproducible Model Workflow |
 | logging_exercise | Logging exercise - only for private use - not submitted |
