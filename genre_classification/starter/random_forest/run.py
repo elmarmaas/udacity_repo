@@ -21,7 +21,8 @@ import wandb
 from sklearn.pipeline import Pipeline, make_pipeline
 from sklearn.impute import SimpleImputer
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)-15s %(message)s")
+logging.basicConfig(level=logging.INFO, 
+                    format="%(asctime)-15s - %(levelname)-15s - %(message)s")
 logger = logging.getLogger()
 
 
